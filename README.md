@@ -1,2 +1,4 @@
-# The-Descent
-Endless down-scroller with RPG elements.
+# The Descent
+Endless downscroller with RPG elements.
+
+Built by Nicolas and Matthew.
