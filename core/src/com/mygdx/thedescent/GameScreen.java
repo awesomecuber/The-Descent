@@ -1,17 +1,13 @@
 package com.mygdx.thedescent;
 
-import java.util.Iterator;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Music;
-import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.TimeUtils;
@@ -19,25 +15,19 @@ import com.badlogic.gdx.utils.TimeUtils;
 public class GameScreen implements Screen {
     private Texture platformImage;
     private Texture playerImage;
-    private Sound dropSound;
+
     private Music rainMusic;
     private SpriteBatch batch;
     private OrthographicCamera camera;
-    private Rectangle player;
-    private float playerdy;
-    private Array<Rectangle> platforms;
+    private Player player;
+    private Array<Platform> platforms;
     private long lastPlatformTime;
-    private boolean onPlat;
 
-
+    private int score;
+    private BitmapFont scoreBitmap;
 
     private void spawnPlatform() {
-        Rectangle platform = new Rectangle();
-        platform.x = MathUtils.random(0, 1080 - 384);
-        platform.y = camera.position.y - 1920 / 2;
-        platform.width = 384;
-        platform.height = 64;
-        platforms.add(platform);
+        platforms.add(new Platform(camera));
         lastPlatformTime = TimeUtils.nanoTime();
     }
 
@@ -48,7 +38,6 @@ public class GameScreen implements Screen {
         playerImage = new Texture(Gdx.files.internal("player.png"));
 
         // load the drop sound effect and the rain background "music"
-        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.wav"));
         rainMusic = Gdx.audio.newMusic(Gdx.files.internal("rain.mp3"));
 
         // start the playback of the background music immediately
@@ -59,19 +48,19 @@ public class GameScreen implements Screen {
         camera.setToOrtho(false);
         batch = new SpriteBatch();
 
-        player = new Rectangle();
-        player.x = 1920 / 2 - 128 / 2;
-        player.y = 1920;
-        player.width = 128;
-        player.height = 128;
-        playerdy = 0;
+        player = new Player();
 
-        platforms = new Array<Rectangle>();
+        platforms = new Array<Platform>();
         spawnPlatform();
+
+        score = 0;
+        scoreBitmap = new BitmapFont();
+        scoreBitmap.getData().setScale(2);
     }
 
     @Override
     public void render(float delta) {
+
         // background color
         Gdx.gl.glClearColor(0, 0, 0.2f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
@@ -81,48 +70,35 @@ public class GameScreen implements Screen {
             Vector3 touchPos = new Vector3();
             touchPos.set(Gdx.input.getX(), Gdx.input.getY(), 0);
             camera.unproject(touchPos);
-            player.x = touchPos.x - 128 / 2;
+            player.rect.x = touchPos.x - 128 / 2;
+        }
+
+        if (player.onPlat) {
+            score++;
         }
 
         // spawn platforms
         if(TimeUtils.nanoTime() - lastPlatformTime > 1000000000) spawnPlatform();
 
-        // adjust y velocity and position
-        playerdy += -30;
-        player.y += playerdy * Gdx.graphics.getDeltaTime();
-
-        boolean lastOnPlat = onPlat; // was player on the platform last frame
-        onPlat = false; // assume this frame false for now
-
-        Iterator<Rectangle> iter = platforms.iterator(); // this instead of for so we can delete rectangles (i think)
-        while(iter.hasNext()) {
-            Rectangle platform = iter.next();
-            if (platform.y + 64 > 1920) iter.remove(); // remove if off screen
-            if (platform.overlaps(player)) {
-                if (playerdy > 0) {
-                    player.y = platform.y - 1; // assume hits bottom if moving up
-                } else if (playerdy < 0) {
-                    player.y = platform.y + 32; // assume hits top if moving down
-                    onPlat = true; // change to true if on platform
-                    if (!lastOnPlat) { // to prevent ear pain
-                        dropSound.play();
-                    }
-                }
-                playerdy = 0; // reset velocity
-            }
-        }
-
         // update camera
-        camera.translate(0, -300 * Gdx.graphics.getDeltaTime());
+        camera.translate(0, -300 * delta);
         camera.update();
+
+        player.update(camera, platforms, delta);
 
         // draw
         batch.begin();
         batch.setProjectionMatrix(camera.combined);
-        batch.draw(playerImage, player.x, player.y);
-        for(Rectangle platform: platforms) {
-            batch.draw(platformImage, platform.x, platform.y);
+        batch.draw(playerImage, player.rect.x, player.rect.y);
+        for(Platform platform: platforms) {
+            if (platform.willDel) {
+                // platform = null;
+            } else {
+                batch.draw(platformImage, platform.rect.x, platform.rect.y);
+            }
         }
+        scoreBitmap.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+        scoreBitmap.draw(batch, "score: " + score, 25, camera.position.y + 1920 / 2 - 25);
         batch.end();
     }
 
@@ -151,7 +127,7 @@ public class GameScreen implements Screen {
         // dispose of all the native resources
         platformImage.dispose();
         playerImage.dispose();
-        dropSound.dispose();
+        player.dropSound.dispose();
         rainMusic.dispose();
         batch.dispose();
     }
